@@ -1,0 +1,2327 @@
+#include <Windows.h>
+#include <gl/GL.h>
+#include <gl/GLU.h>
+#include <math.h>
+
+#pragma comment (lib, "OpenGL32.lib")
+#pragma comment (lib, "GLU32.lib")
+
+#define WINDOW_TITLE "Robot"
+
+// Switching view
+float OrthoPers = 0;
+
+// Model translation
+float tx, ty, tz = 0.0;
+
+// For Lighting
+GLfloat fNormalX, fNormalY, fNormalZ = 0.0;
+
+float lx = 8.0;
+float ly = 8.0;
+float lz = 1.0;
+float lightPos[] = { lx, ly, lz };
+
+float dif[] = { 1.0, 1.0, 1.0 };
+float amb[] = { 1.0, 1.0, 1.0 };
+
+float green[] = { 0.0, 1.0, 0.0 };
+float yellow[] = { 1.0, 1.0, 0.0 };
+float white[] = { 1.0, 1.0, 1.0 };
+
+float lightSpeed = 0.5;
+boolean lightOn = false;
+
+// For Texture
+GLuint texture = 0;
+
+BITMAP BMP;
+HBITMAP hBMP = NULL;
+BITMAP BMP2;
+HBITMAP hBMP2 = NULL;
+
+// For rotation
+float rx, ry, rz = 0.0;
+float rotateSpeed = 10;
+
+// For part movement
+int movePart = 0;
+
+int moveDirection = 0;
+
+float moveSpeed = 5;
+
+float mx, my, mz = 0.0;
+
+float accmX[15] = { 0.0 };
+float accmY[15] = { 0.0 };
+float accmZ[15] = { 0.0 };
+
+// For animation
+int weapon = 0;
+int animation = 0;
+int swing = 0;
+int draw = 0;
+int pose = 0;
+
+float swordRX = 0.0;
+float swordRY = 0.0;
+float swordRZ = 0.0;
+float swordTX = 0.0;
+float swordTY = 0.0;
+float swordTZ = 0.0;
+float swordRainY[10] = { 0.0 };
+
+// TODO: Combine duplicating shapes Eg: upperlimbs, upperlimbs2, lowerlimbs, lowerlimbs2
+
+//*******************************************************************
+// Function: CalculateVectorNormal
+// 
+// Purpose: Given three points of a 3D plane, this function calculates
+//          the normal vector of that plane.
+// 
+// Parameters:
+//     fVert1[]   == array for 1st point (3 elements are x, y, and z).
+//     fVert2[]   == array for 2nd point (3 elements are x, y, and z).
+//     fVert3[]   == array for 3rd point (3 elements are x, y, and z).
+// 
+// Returns:
+//     fNormalX   == X vector for the normal vector
+//     fNormalY   == Y vector for the normal vector
+//     fNormalZ   == Z vector for the normal vector
+// 
+// Comments:
+// 
+// History:  Date       Author        Reason
+//           3/22/95     GGB           Created
+//**********************************************************************
+GLvoid CalculateVectorNormal(GLfloat fVert1[], GLfloat fVert2[], GLfloat fVert3[], GLfloat *fNormalX, GLfloat *fNormalY, GLfloat *fNormalZ) {
+	GLfloat Qx, Qy, Qz, Px, Py, Pz;
+
+	Qx = fVert2[0] - fVert1[0];
+	Qy = fVert2[1] - fVert1[1];
+	Qz = fVert2[2] - fVert1[2];
+	Px = fVert3[0] - fVert1[0];
+	Py = fVert3[1] - fVert1[1];
+	Pz = fVert3[2] - fVert1[2];
+
+	*fNormalX = Py * Qz - Pz * Qy;
+	*fNormalY = Pz * Qx - Px * Qz;
+	*fNormalZ = Px * Qy - Py * Qx;
+}
+
+// Easier to visualise the transformation matrix
+void axisLine() {
+	glPushAttrib(GL_CURRENT_BIT);
+	glBegin(GL_LINES);
+
+	glColor3f(1.0, 0.0, 0.0);
+	glVertex3f(0.0, 0.0, 0.0);
+	glVertex3f(3.0, 0.0, 0.0);
+
+	glColor3f(1.0, 1.0, 0.0);
+	glVertex3f(0.0, 0.0, 0.0);
+	glVertex3f(0.0, 3.0, 0.0);
+
+	glColor3f(0.0, 0.0, 1.0);
+	glVertex3f(0.0, 0.0, 0.0);
+	glVertex3f(0.0, 0.0, 3.0);
+	glEnd();
+	glPopAttrib();
+}
+
+// Animation
+void walk() {
+	if (swing == 0) {
+		accmX[2] += 0.02;
+		accmX[3] -= 0.02;
+		accmX[8] -= 0.02;
+		accmX[9] += 0.02;
+		if (accmX[2] >= 30 && accmX[3] <= 30)
+			swing = 1;
+	}
+	else {
+		accmX[2] -= 0.02;
+		accmX[3] += 0.02;
+		accmX[8] += 0.02;
+		accmX[9] -= 0.02;
+		if (accmX[2] <= 30 && accmX[3] >= 30)
+			swing = 0;
+	}
+}
+
+void drawSword() {
+	if (draw == 0) {
+		if (accmX[3] >= -125) {
+			accmX[3] -= 0.02;
+			accmX[5] -= 0.02;
+			accmX[7] -= 0.005;
+		}
+		else {
+			draw = 1;
+		}
+	}
+	else if(draw == 1) {
+		if (accmX[3] <= -60) {
+			accmX[3] += 0.02;
+			accmX[5] += 0.025;
+			accmX[7] += 0.005;
+		}
+		else {
+			draw = 2;
+		}
+	}
+	else if (draw == 2) {
+		if (accmX[3] >= -120) {
+			accmX[3] -= 0.02;
+			accmX[5] += 0.01;
+			accmX[7] += 0.01;
+		}
+		else {
+			draw = 3;
+		}
+	}
+}
+
+void swordRotation() {
+
+	if (draw == 1) {
+		swordRZ -= 0.02;
+		swordRX += 0.12;
+
+		swordTZ += 0.004;
+		if (swordTY < 0.6) {
+			swordTY += 0.01;
+			swordTZ += 0.01;
+		}
+	}else if (draw == 2) {
+		swordTY += 0.001;
+		swordTX += 0.0005;
+	}
+}
+
+//BODY PART BUILDING & TEXTURE
+void head() {
+
+
+	//HBITMAP hBMP2 = (HBITMAP)LoadImage(GetModuleHandle(NULL),
+	//"metalic.bmp", IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION | LR_LOADFROMFILE);
+
+	//GetObject(hBMP2, sizeof(BMP2), &BMP2);
+	//glEnable(GL_TEXTURE_2D);
+
+	//glGenTextures(1, &texture);
+	//glBindTexture(GL_TEXTURE_2D, texture);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BMP2.bmWidth, BMP2.bmHeight, 0, GL_BGR_EXT, GL_UNSIGNED_BYTE, BMP2.bmBits);
+
+	//crown
+
+	glBegin(GL_TRIANGLES);
+	//glColor3f(1, 1, 0);
+	glVertex3f(0.0, -0.0, 0.0);
+	glVertex3f(0.0, -2.0, 1.5);
+	glVertex3f(0.0, -4.0, 0.0);
+	glEnd();
+
+	//left 
+	glBegin(GL_QUADS);
+	//glColor3f(0.8, 0.8, 0.8);
+	glVertex3f(0.0, -0.0, 0.0);
+	glVertex3f(0.0, -4.0, 0.0);
+	glVertex3f(6.0, -2.0, 0.0);
+	glVertex3f(4.0, 1.0, 0.0);// 1
+
+	//glColor3f(0.7, 0.7, 0.7);
+	glVertex3f(0.0, 0.0, 0.0);
+	glVertex3f(0.0, -2.0, 1.5);
+	glVertex3f(6.0, 0.0, 1.5);// 2 
+	glVertex3f(4.0, 1.0, 0.0);
+
+	//glColor3f(0.6, 0.6, 0.6);
+	glVertex3f(0.0, -2.0, 1.5);
+	glVertex3f(0.0, -4.0, 0.0);
+	glVertex3f(6.0, -2.0, 0.0);// 3
+	glVertex3f(6.0, 0.0, 1.5);
+	glEnd();
+
+	glBegin(GL_TRIANGLES); //rgb
+	//glColor3f(1, 0, 0);
+	glVertex3f(6.0, 0.0, 1.5);
+	glVertex3f(4.0, 1.0, 0.0);
+	glVertex3f(8.0, 8.0, 0.0);
+
+	///glColor3f(0, 1, 0);
+	glVertex3f(8.0, 8.0, 0.0);
+	glVertex3f(6.0, 0.0, 1.5);
+	glVertex3f(6.0, -2.0, 0.0);
+
+	//glColor3f(0, 0, 1);
+	glVertex3f(8.0, 8.0, 0.0);
+	glVertex3f(4.0, 1.0, 0.0);
+	glVertex3f(6.0, -2.0, 0.0);
+	glEnd();
+
+	//right
+	glBegin(GL_QUADS);
+	//glColor3f(0.8, 0.8, 0.8);
+	glVertex3f(0.0, -0.0, 0.0);
+	glVertex3f(0.0, -4.0, 0.0);
+	glVertex3f(-6.0, -2.0, 0.0);
+	glVertex3f(-4.0, 1.0, 0.0);// 1
+
+	//glColor3f(0.7, 0.7, 0.7);
+	glVertex3f(0.0, 0.0, 0.0);
+	glVertex3f(0.0, -2.0, 1.5);
+	glVertex3f(-6.0, 0.0, 1.5);// 2 
+	glVertex3f(-4.0, 1.0, 0.0);
+
+	//glColor3f(0.6, 0.6, 0.6);
+	glVertex3f(0.0, -2.0, 1.5);
+	glVertex3f(0.0, -4.0, 0.0);
+	glVertex3f(-6.0, -2.0, 0.0);// 3
+	glVertex3f(-6.0, 0.0, 1.5);
+	glEnd();
+
+	glBegin(GL_TRIANGLES); //rgb
+	//glColor3f(1, 0, 0);
+	glVertex3f(-6.0, 0.0, 1.5);
+	glVertex3f(-4.0, 1.0, 0.0);
+	glVertex3f(-8.0, 8.0, 0.0);
+
+	//glColor3f(0, 1, 0);
+	glVertex3f(-8.0, 8.0, 0.0);
+	glVertex3f(-6.0, 0.0, 1.5);
+	glVertex3f(-6.0, -2.0, 0.0);
+
+	//glColor3f(0, 0, 1);
+	glVertex3f(-8.0, 8.0, 0.0);
+	glVertex3f(-4.0, 1.0, 0.0);
+	glVertex3f(-6.0, -2.0, 0.0);
+	glEnd();
+
+	//middle
+	glBegin(GL_TRIANGLES);
+	//glColor3f(1, 1, 1);
+	glVertex3f(-1.0, 0.0, 0.0);
+	glVertex3f(0.0, -2.0, -1.5);
+	glVertex3f(1.0, 0.0, 0.0);
+
+	glVertex3f(-1.0, -4.0, 0.0);
+	glVertex3f(0.0, -6.0, -1.5);
+	glVertex3f(1.0, -4.0, 0.0);
+	glEnd();
+
+	glBegin(GL_QUADS);
+	//glColor3f(0, 1, 0);
+	glVertex3f(-1.0, 0.0, 0.0);
+	glVertex3f(1.0, 0.0, 0.0);
+	glVertex3f(1.0, -4.0, 0.0);
+	glVertex3f(-1.0, -4.0, 0.0);
+
+	//glColor3f(1, 0, 0);
+	glVertex3f(-1.0, 0.0, 0.0);
+	glVertex3f(0.0, -2.0, -1.5);
+	glVertex3f(0.0, -6.0, -1.5);
+	glVertex3f(-1.0, -4.0, 0.0);
+
+	//glColor3f(0, 0, 1);
+	glVertex3f(1.0, 0.0, 0.0);
+	glVertex3f(0.0, -2.0, -1.5);
+	glVertex3f(0.0, -6.0, -1.5);
+	glVertex3f(1.0, -4.0, 0.0);
+	glEnd();
+	//middle
+
+	//mask
+
+	GLfloat maskVertices[16][3] = {
+	{-9.0, -5.0, 1.0},
+	{-6.0, 3.0, 1.0},
+	{6.0, 3.0, 1.0},
+	{9.0, -5.0, 1.0},
+	{9.0, -5.0, 5.0}, //5
+	{6.0, 3.0, 5.0},
+	{-6.0, 3.0, 5.0},
+	{-9.0, -5.0, 5.0},
+	{-6.0, -13.0, 1.0},
+	{6.0, -13.0, 1.0}, //10
+	{-6.0, -13.0, 5.0},
+	{6.0, -13.0, 5.0},
+	};
+
+	glBegin(GL_QUADS);
+	CalculateVectorNormal(maskVertices[2], maskVertices[1], maskVertices[0], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(maskVertices[0]);  //1
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(maskVertices[1]);  //2
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(maskVertices[2]);  //3
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(maskVertices[3]);  //4
+
+	//glBegin(GL_QUADS);
+	//CalculateVectorNormal(maskVertices[2], maskVertices[1], maskVertices[0], &fNormalX, &fNormalY, &fNormalZ);
+	//glNormal3f(fNormalX, fNormalY, fNormalZ);
+	//glTexCoord2f(0.0, 0.0);
+	//glVertex3fv(maskVertices[0]);  //1
+	//glTexCoord2f(0.0, 1.0);
+	//glVertex3fv(maskVertices[1]);  //2
+	//glTexCoord2f(1.0, 0.0);
+	//glVertex3fv(maskVertices[2]);  //3
+	//glTexCoord2f(1.0, 1.0);
+	//glVertex3fv(maskVertices[3]);  //4
+
+	//SIDE
+	CalculateVectorNormal(maskVertices[2], maskVertices[3], maskVertices[4], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(maskVertices[2]);  //3
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(maskVertices[3]);  //4
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(maskVertices[4]);  //5
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(maskVertices[5]);  //6
+
+	//top
+	CalculateVectorNormal(maskVertices[2], maskVertices[5], maskVertices[6], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(maskVertices[2]);  //3
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(maskVertices[5]);  //6
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(maskVertices[6]);  //7
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(maskVertices[1]);  //2
+
+
+	//SIDE
+	CalculateVectorNormal(maskVertices[1], maskVertices[0], maskVertices[7], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(maskVertices[1]);  //2
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(maskVertices[0]);  //1
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(maskVertices[7]);  //8
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(maskVertices[6]);  //7
+
+	CalculateVectorNormal(maskVertices[7], maskVertices[6], maskVertices[5], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(maskVertices[7]);  //8
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(maskVertices[6]);  //7
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(maskVertices[5]);  //6
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(maskVertices[4]);  //5
+
+	//bottom
+	CalculateVectorNormal(maskVertices[7], maskVertices[4], maskVertices[3], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(maskVertices[3]);  //4
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(maskVertices[4]);  //5
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(maskVertices[7]);  //8
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(maskVertices[0]);  //1
+	glEnd();
+
+	glBegin(GL_QUADS); //eye
+	//glColor3f(1, 0, 1);
+	glVertex3f(-8.0, -5.0, 0.0);
+	glVertex3f(-8.0, -6.0, 0.0);
+	glVertex3f(8.0, -6.0, 0.0);
+	glVertex3f(8.0, -5.0, 0.0);
+	glEnd();
+
+
+	glBegin(GL_QUADS);
+	//glColor3f(1, 0, 0);
+	CalculateVectorNormal(maskVertices[0], maskVertices[8], maskVertices[9], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(maskVertices[0]);  //1
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(maskVertices[8]);  //9
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(maskVertices[9]);  //10
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(maskVertices[3]);  //4
+
+
+
+	//glColor3f(1, 0, 1); //SIDE
+	CalculateVectorNormal(maskVertices[7], maskVertices[0], maskVertices[8], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(maskVertices[8]);  //9
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(maskVertices[0]);  //1
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(maskVertices[7]);  //8
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(maskVertices[10]);  //11
+
+
+	//glColor3f(1, 0, 1); //bottom
+	CalculateVectorNormal(maskVertices[11], maskVertices[9], maskVertices[8], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(maskVertices[8]);  //9
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(maskVertices[9]);  //10
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(maskVertices[11]);  //12
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(maskVertices[10]);  //11
+
+
+	//glColor3f(1, 0, 1); //SIDE
+	CalculateVectorNormal(maskVertices[4], maskVertices[3], maskVertices[9], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(maskVertices[9]);  //10
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(maskVertices[3]);  //4
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(maskVertices[4]);  //5
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(maskVertices[11]);  //12
+
+
+	//glColor3f(1, 0, 0);
+	CalculateVectorNormal(maskVertices[11], maskVertices[10], maskVertices[7], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(maskVertices[7]);  //8
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(maskVertices[10]);  //11
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(maskVertices[11]);  //12
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(maskVertices[4]);  //5
+
+	glEnd();
+
+	//glDisable(GL_TEXTURE_2D);
+	//DeleteObject(hBMP);
+	//glDeleteTextures(1, &texture);
+	//DeleteObject(hBMP2);
+	//glDeleteTextures(1, &texture);
+
+}
+
+// DEVELOPING BASIC SHAPES
+
+//void head() {
+//	GLUquadricObj* sphere = NULL;
+//	sphere = gluNewQuadric();
+//
+//	//gluQuadricDrawStyle(sphere, GLU_LINE); //only draw line
+//	gluSphere(sphere, 1.5, 30, 10);
+//	gluDeleteQuadric(sphere);
+//}
+
+void chest() {
+	GLfloat chestVertices[8][3] = {
+		2.5, 4.0, 1.0,
+		2.5, 4.0, -1.0,
+		-2.5, 4.0, -1.0,
+		-2.5, 4.0, 1.0,
+		1.5, 0.0, -0.8,
+		1.5, 0.0, 0.8,
+		-1.5, 0.0, 0.8,
+		-1.5, 0.0, -0.8
+	};
+
+	glBegin(GL_QUADS);
+
+	// Top
+	CalculateVectorNormal(chestVertices[2], chestVertices[1], chestVertices[0], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(chestVertices[0]);	// 1
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(chestVertices[1]); 	// 2
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(chestVertices[2]);	// 3
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(chestVertices[3]); 	// 4
+
+	// Front
+	CalculateVectorNormal(chestVertices[3], chestVertices[0], chestVertices[5], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(chestVertices[5]);	// 6
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(chestVertices[0]);	// 1
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(chestVertices[3]); 	// 4
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(chestVertices[6]);	// 7
+
+	// Right  
+	CalculateVectorNormal(chestVertices[0], chestVertices[1], chestVertices[4], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(chestVertices[4]);	// 5
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(chestVertices[1]);	// 2
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(chestVertices[0]);	// 1
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(chestVertices[5]);	// 6
+
+	// Back	  
+	CalculateVectorNormal(chestVertices[1], chestVertices[2], chestVertices[7], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(chestVertices[7]);	// 8
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(chestVertices[2]);	// 3
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(chestVertices[1]); 	// 2
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(chestVertices[4]);	// 5
+
+	// Left	 
+	CalculateVectorNormal(chestVertices[2], chestVertices[3], chestVertices[6], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(chestVertices[6]);	// 7
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(chestVertices[3]);	// 4
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(chestVertices[2]);	// 3
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(chestVertices[7]);	// 8
+
+	// Bottom
+	CalculateVectorNormal(chestVertices[6], chestVertices[5], chestVertices[4], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(chestVertices[4]);	// 5
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(chestVertices[5]);	// 6
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(chestVertices[6]);	// 7
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(chestVertices[7]);	// 8
+
+	glEnd();
+}
+
+void hip() {
+	GLfloat hipVertices[8][3] = {
+		1.5, 0.0, 0.8,
+		1.5, 0.0, -0.8,
+		-1.5, 0.0, -0.8,
+		-1.5, 0.0, 0.8,
+		2.0, -1.0, -1.0,
+		2.0, -1.0, 1.0,
+		-2.0, -1.0, 1.0,
+		-2.0, -1.0, -1.0
+	};
+
+	glBegin(GL_QUADS);
+	// Top
+	CalculateVectorNormal(hipVertices[2], hipVertices[1], hipVertices[0], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(hipVertices[0]);	// 1
+	glVertex3fv(hipVertices[1]);	// 2
+	glVertex3fv(hipVertices[2]);	// 3
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(hipVertices[3]);	// 4
+
+	// Front
+	CalculateVectorNormal(hipVertices[3], hipVertices[0], hipVertices[5], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(hipVertices[5]);	// 6
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(hipVertices[0]);	// 1
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(hipVertices[3]);	// 4
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(hipVertices[6]);	// 7
+
+	// Right
+	CalculateVectorNormal(hipVertices[0], hipVertices[1], hipVertices[4], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(hipVertices[4]);	// 5
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(hipVertices[1]);	// 2
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(hipVertices[0]);	// 1
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(hipVertices[5]);	// 6
+
+	// Back
+	CalculateVectorNormal(hipVertices[1], hipVertices[2], hipVertices[7], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(hipVertices[7]);	// 8
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(hipVertices[2]);	// 3
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(hipVertices[1]);	// 2
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(hipVertices[4]);	// 5
+
+	// Left
+	CalculateVectorNormal(hipVertices[2], hipVertices[3], hipVertices[6], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(hipVertices[6]);	// 7
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(hipVertices[3]);	// 4
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(hipVertices[2]);	// 3
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(hipVertices[7]);	// 8
+
+	// Bottom
+	CalculateVectorNormal(hipVertices[6], hipVertices[5], hipVertices[4], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(hipVertices[4]);	// 5
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(hipVertices[5]);	// 6
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(hipVertices[6]);	// 7
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(hipVertices[7]);	// 8
+
+	glEnd();
+}
+
+void buttocks() {
+	GLfloat buttocksVertices[8][3] = {
+		2.0, 0.0, 1.0,
+		2.0, 0.0, -1.0,
+		-2.0, 0.0, -1.0,
+		-2.0, 0.0, 1.0,
+		0.5, -2.0, -0.8,
+		0.5, -2.0, 0.8,
+		-0.5, -2.0, 0.8,
+		-0.5, -2.0, -0.8
+	};
+
+	glBegin(GL_QUADS);
+	// Top
+	CalculateVectorNormal(buttocksVertices[2], buttocksVertices[1], buttocksVertices[0], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(buttocksVertices[0]);	// 1
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(buttocksVertices[1]);	// 2
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(buttocksVertices[2]);	// 3
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(buttocksVertices[3]);	// 4
+
+	// Front
+	CalculateVectorNormal(buttocksVertices[3], buttocksVertices[0], buttocksVertices[5], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(buttocksVertices[5]);	// 6
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(buttocksVertices[0]);	// 1
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(buttocksVertices[3]);	// 4
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(buttocksVertices[6]);	// 7
+
+	// Right
+	CalculateVectorNormal(buttocksVertices[0], buttocksVertices[1], buttocksVertices[4], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(buttocksVertices[4]);	// 5
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(buttocksVertices[1]);	// 2
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(buttocksVertices[0]);	// 1
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(buttocksVertices[5]);	// 6
+
+	// Back
+	CalculateVectorNormal(buttocksVertices[1], buttocksVertices[2], buttocksVertices[7], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(buttocksVertices[7]);	// 8
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(buttocksVertices[2]);	// 3
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(buttocksVertices[1]);	// 2
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(buttocksVertices[4]);	// 5
+
+	// Left
+	CalculateVectorNormal(buttocksVertices[2], buttocksVertices[3], buttocksVertices[6], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(buttocksVertices[6]);	// 7
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(buttocksVertices[3]);	// 4
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(buttocksVertices[2]);	// 3
+	glTexCoord2f(1.0, 1.0);
+	glVertex3fv(buttocksVertices[7]);	// 8
+
+	// Bottom
+	CalculateVectorNormal(buttocksVertices[6], buttocksVertices[5], buttocksVertices[4], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3fv(buttocksVertices[4]);	// 5
+	glTexCoord2f(0.0, 1.0);
+	glVertex3fv(buttocksVertices[5]);	// 6
+	glTexCoord2f(1.0, 0.0);
+	glVertex3fv(buttocksVertices[6]);	// 7
+	glVertex3fv(buttocksVertices[7]);	// 8
+
+	glEnd();
+}
+
+void neck() {
+	GLUquadricObj* cylinder = NULL;
+	cylinder = gluNewQuadric();
+	gluQuadricTexture(cylinder, true);
+	gluQuadricDrawStyle(cylinder, GLU_FILL);
+
+	//gluQuadricDrawStyle(cylinder, GLU_LINE);
+	gluCylinder(cylinder, 0.5, 0.7, 1.0, 10, 10);
+	gluDeleteQuadric(cylinder);
+}
+
+void waist() {
+	GLUquadricObj* sphere = NULL;
+	sphere = gluNewQuadric();
+	gluQuadricTexture(sphere, true);
+	gluQuadricDrawStyle(sphere, GLU_FILL);
+
+
+	//gluQuadricDrawStyle(sphere, GLU_LINE); //only draw line
+	gluSphere(sphere, 1.3, 30, 10);
+	gluDeleteQuadric(sphere);
+}
+
+void joint() {
+	GLUquadricObj* sphere = NULL;
+	sphere = gluNewQuadric();
+	gluQuadricTexture(sphere, true);
+	gluQuadricDrawStyle(sphere, GLU_FILL);
+
+	//gluQuadricDrawStyle(sphere, GLU_LINE); //only draw line
+	gluSphere(sphere, 0.5, 30, 10);
+	gluDeleteQuadric(sphere);
+}
+
+void limb() {
+	GLfloat limbVertices[8][3] = {
+		{0.5, 0.0, 0.5},
+		{0.5, 0.0, -0.5},
+		{-0.5, 0.0, -0.5},
+		{-0.5, 0.0, 0.5},
+		{0.5, -2.5, -0.5},
+		{0.5, -2.5, 0.5},
+		{-0.5, -2.5, 0.5},
+		{-0.5, -2.5, -0.5}
+	};
+
+	glBegin(GL_QUADS);
+
+	// Top
+	CalculateVectorNormal(limbVertices[2], limbVertices[1], limbVertices[0], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(limbVertices[0]);		// 1
+	glVertex3fv(limbVertices[1]); 		// 2
+	glVertex3fv(limbVertices[2]);		// 3
+	glVertex3fv(limbVertices[3]); 		// 4
+
+	// Front
+	CalculateVectorNormal(limbVertices[3], limbVertices[0], limbVertices[5], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(limbVertices[5]);		// 6
+	glVertex3fv(limbVertices[0]);		// 1
+	glVertex3fv(limbVertices[3]); 		// 4
+	glVertex3fv(limbVertices[6]);		// 7
+
+	// Right
+	CalculateVectorNormal(limbVertices[0], limbVertices[1], limbVertices[4], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(limbVertices[4]);		// 5
+	glVertex3fv(limbVertices[1]); 		// 2
+	glVertex3fv(limbVertices[0]);		// 1
+	glVertex3fv(limbVertices[5]);		// 6
+
+	// Back
+	CalculateVectorNormal(limbVertices[1], limbVertices[2], limbVertices[7], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(limbVertices[7]);		// 8
+	glVertex3fv(limbVertices[2]);		// 3
+	glVertex3fv(limbVertices[1]); 		// 2
+	glVertex3fv(limbVertices[4]);		// 5
+
+	// Left
+	CalculateVectorNormal(limbVertices[2], limbVertices[3], limbVertices[6], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(limbVertices[6]);		// 7
+	glVertex3fv(limbVertices[3]); 		// 4
+	glVertex3fv(limbVertices[2]);		// 3
+	glVertex3fv(limbVertices[7]);		// 8
+
+	// Bottom 
+	CalculateVectorNormal(limbVertices[6], limbVertices[5], limbVertices[4], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(limbVertices[4]);		// 5
+	glVertex3fv(limbVertices[5]);		// 6
+	glVertex3fv(limbVertices[6]);		// 7
+	glVertex3fv(limbVertices[7]);		// 8
+
+	glEnd();
+}
+
+void palm() {
+	GLfloat palmVertices[8][3] = {
+		0.5, 0.0, 0.5,
+		0.5, 0.0, -0.5,
+		-0.5, 0.0, -0.5,
+		-0.5, 0.0, 0.5,
+		0.2, -1.5, -0.4,
+		0.2, -1.5, 0.4,
+		-0.2, -1.5, 0.4,
+		-0.2, -1.5, -0.4
+	};
+
+	glBegin(GL_QUADS);
+	// Top
+	CalculateVectorNormal(palmVertices[2], palmVertices[1], palmVertices[0], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(palmVertices[0]);	// 1
+	glVertex3fv(palmVertices[1]);	// 2
+	glVertex3fv(palmVertices[2]);	// 3
+	glVertex3fv(palmVertices[3]);	// 4
+
+	// Front
+	CalculateVectorNormal(palmVertices[3], palmVertices[0], palmVertices[5], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(palmVertices[5]);	// 6
+	glVertex3fv(palmVertices[0]);	// 1
+	glVertex3fv(palmVertices[3]);	// 4
+	glVertex3fv(palmVertices[6]);	// 7
+
+	// Right
+	CalculateVectorNormal(palmVertices[0], palmVertices[1], palmVertices[4], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(palmVertices[4]);	// 5
+	glVertex3fv(palmVertices[1]);	// 2
+	glVertex3fv(palmVertices[0]);	// 1
+	glVertex3fv(palmVertices[5]);	// 6
+
+	// Back
+	CalculateVectorNormal(palmVertices[1], palmVertices[2], palmVertices[7], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(palmVertices[7]);	// 8
+	glVertex3fv(palmVertices[2]);	// 3
+	glVertex3fv(palmVertices[1]);	// 2
+	glVertex3fv(palmVertices[4]);	// 5
+
+	// Left
+	CalculateVectorNormal(palmVertices[2], palmVertices[3], palmVertices[6], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(palmVertices[6]);	// 7
+	glVertex3fv(palmVertices[3]);	// 4
+	glVertex3fv(palmVertices[2]);	// 3
+	glVertex3fv(palmVertices[7]);	// 8
+
+	// Bottom
+	CalculateVectorNormal(palmVertices[6], palmVertices[5], palmVertices[4], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(palmVertices[4]);	// 5
+	glVertex3fv(palmVertices[5]);	// 6
+	glVertex3fv(palmVertices[6]);	// 7
+	glVertex3fv(palmVertices[7]);	// 8
+
+	glEnd();
+}
+
+void foot() {
+	GLfloat footVertices[10][3] = {
+		0.5, 0.0, 0.5,
+		0.5, 0.0, -0.5,
+		-0.5, 0.0, -0.5,
+		-0.5, 0.0, 0.5,
+		0.5, -0.8, 2.0,
+		-0.5, -0.8, 2.0,
+		0.5, -1.5, -0.5,
+		0.5, -1.5, 2.0,
+		-0.5, -1.5, 2.0,
+		-0.5, -1.5, -0.5
+	};
+
+	glBegin(GL_QUADS);
+	// Top
+	CalculateVectorNormal(footVertices[2], footVertices[1], footVertices[0], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(footVertices[0]);	// 1
+	glVertex3fv(footVertices[1]);	// 2
+	glVertex3fv(footVertices[2]);	// 3
+	glVertex3fv(footVertices[3]);	// 4
+
+	// Top2
+	CalculateVectorNormal(footVertices[3], footVertices[0], footVertices[4], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(footVertices[4]);	// 5
+	glVertex3fv(footVertices[0]);	// 1
+	glVertex3fv(footVertices[3]);	// 4
+	glVertex3fv(footVertices[5]);	// 6
+
+	// Front
+	CalculateVectorNormal(footVertices[5], footVertices[4], footVertices[7], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(footVertices[7]);	// 8
+	glVertex3fv(footVertices[4]);	// 5
+	glVertex3fv(footVertices[5]);	// 6
+	glVertex3fv(footVertices[8]);	// 9
+
+	// Bottom
+	CalculateVectorNormal(footVertices[9], footVertices[6], footVertices[7], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(footVertices[7]);	// 8
+	glVertex3fv(footVertices[6]);	// 7
+	glVertex3fv(footVertices[9]);	// 10
+	glVertex3fv(footVertices[8]);	// 9
+
+	// Back
+	CalculateVectorNormal(footVertices[1], footVertices[2], footVertices[9], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(footVertices[9]);	// 10
+	glVertex3fv(footVertices[2]);	// 3
+	glVertex3fv(footVertices[1]);	// 2
+	glVertex3fv(footVertices[6]);	// 7
+	glEnd();
+
+	glBegin(GL_POLYGON);
+	// Right
+	CalculateVectorNormal(footVertices[0], footVertices[1], footVertices[6], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(footVertices[6]);	// 7
+	glVertex3fv(footVertices[1]);	// 2
+	glVertex3fv(footVertices[0]);	// 1
+	glVertex3fv(footVertices[4]);	// 5
+	glVertex3fv(footVertices[7]);	// 8
+	glEnd();
+
+	glBegin(GL_POLYGON);
+	// Left
+	CalculateVectorNormal(footVertices[3], footVertices[5], footVertices[8], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(footVertices[8]);	// 9
+	glVertex3fv(footVertices[5]);	// 6
+	glVertex3fv(footVertices[3]);	// 4
+	glVertex3fv(footVertices[2]);	// 3
+	glVertex3fv(footVertices[9]);	// 10
+	glEnd();
+}
+
+// CONSTRUCTING HUMANOID
+void headNeck() {
+	glPushAttrib(GL_CURRENT_BIT);
+	if (movePart == 1) {
+		glColor3f(1.0, 0.0, 0.0);
+	}
+	glRotatef(accmX[0], 1, 0, 0);
+	glRotatef(accmY[0], 0, 1, 0);
+	glRotatef(accmZ[0], 0, 0, 1);
+	if (movePart == 1) {
+		accmX[0] = mx;
+		accmY[0] = my;
+		accmZ[0] = mz;
+	}
+
+
+	glPushMatrix();
+		glTranslatef(0.0, 2.0, 1.5);
+		glScalef(0.2, 0.2, -0.5);
+		head();
+	glPopMatrix();
+
+	glPushMatrix();
+		glRotatef(90.0, 1.0, 0.0, 0.0);
+		neck();
+	glPopMatrix();
+
+	glPopAttrib();
+}
+
+void upperBody() {
+	glPushMatrix();
+	chest();
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(0.0, -0.5, 0.0);
+	waist();
+	glPopMatrix();
+}
+
+void upperLimbs() {
+	glPushMatrix();
+	joint();
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(0.0, -0.2, 0.0);
+	limb();
+	glPopMatrix();
+}
+
+void upperLimbs2() {
+	glPushMatrix();
+	joint();
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(0.0, -0.2, 0.0);
+	limb();
+	glPopMatrix();
+}
+
+void upperLimbs3() {
+	glPushMatrix();
+	joint();
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(0.0, -0.2, 0.0);
+	palm();
+	glPopMatrix();
+}
+
+void leftULimb() {
+	glPushMatrix();
+		glTranslatef(0.0, -2.9, 0.0);
+		glRotatef(accmX[4], 1, 0, 0);
+		glRotatef(accmY[4], 0, 1, 0);
+		glRotatef(accmZ[4], 0, 0, 1);
+		if (movePart == 41) {
+			accmX[4] = mx;
+			accmY[4] = my;
+			accmZ[4] = mz;
+		}
+
+		glPushAttrib(GL_CURRENT_BIT);
+		if (movePart == 51) {
+			glColor3f(1.0, 0.0, 0.0);
+		}
+		glPushMatrix();
+			//glTranslatef(2.5, -2.8, 0.0);
+			//glTranslatef(0.0, -5.8, 0.0);
+			glTranslatef(0.0, -2.9, 0.0);
+			glRotatef(accmX[6], 1, 0, 0);
+			glRotatef(accmY[6], 0, 1, 0);
+			glRotatef(accmZ[6], 0, 0, 1);
+			if (movePart == 51) {
+				accmX[6] = mx;
+				accmY[6] = my;
+				accmZ[6] = mz;
+			}
+			upperLimbs3();
+		glPopMatrix();
+		glPopAttrib();
+
+		glPushAttrib(GL_CURRENT_BIT);
+		if (movePart == 41) {
+			glColor3f(1.0, 0.0, 0.0);
+		}
+
+		//glTranslatef(2.5, 0.1, 0.0);
+		//glTranslatef(0.0, -2.9, 0.0);
+
+		upperLimbs2();
+	glPopMatrix();
+	glPopAttrib();
+
+	glPushMatrix();
+	//glTranslatef(2.5, 3, 0.0);
+	//glTranslatef(0.0, 0.0, 0.0);
+	upperLimbs();
+	glPopMatrix();
+}
+
+void rightULimb() {
+	glPushMatrix();
+		glTranslatef(0.0, -2.9, 0.0);
+		glRotatef(accmX[5], 1, 0, 0);
+		glRotatef(accmY[5], 0, 1, 0);
+		glRotatef(accmZ[5], 0, 0, 1);
+		if (movePart == 42) {
+			accmX[5] = mx;
+			accmY[5] = my;
+			accmZ[5] = mz;
+		}
+
+		glPushAttrib(GL_CURRENT_BIT);
+		if (movePart == 52) {
+			glColor3f(1.0, 0.0, 0.0);
+		}
+		glPushMatrix();
+			//glTranslatef(2.5, -2.8, 0.0);
+			//glTranslatef(0.0, -5.8, 0.0);
+			glTranslatef(0.0, -2.9, 0.0);
+			glRotatef(accmX[7], 1, 0, 0);
+			glRotatef(accmY[7], 0, 1, 0);
+			glRotatef(accmZ[7], 0, 0, 1);
+			if (movePart == 52) {
+				accmX[7] = mx;
+				accmY[7] = my;
+				accmZ[7] = mz;
+			}
+			upperLimbs3();
+		glPopMatrix();
+		glPopAttrib();
+
+		glPushAttrib(GL_CURRENT_BIT);
+		if (movePart == 42) {
+			glColor3f(1.0, 0.0, 0.0);
+		}
+		
+		//glTranslatef(2.5, 0.1, 0.0);
+		//glTranslatef(0.0, -2.9, 0.0);
+			
+		upperLimbs2();
+	glPopMatrix();
+	glPopAttrib();
+
+	glPushMatrix();
+		//glTranslatef(2.5, 3, 0.0);
+		//glTranslatef(0.0, 0.0, 0.0);
+		upperLimbs();
+	glPopMatrix();
+}
+
+// This part will not rotate and only translate together with upperbody and headneck when walking
+void lowerBody() {
+	glPushMatrix();
+	glTranslatef(0.0, -1, 0.0);
+	hip();
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(0.0, -2, 0.0);
+	buttocks();
+	glPopMatrix();
+}
+
+void lowerLimbs() {
+	glPushMatrix();
+	joint();
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(0.0, -0.2, 0.0);
+	limb();
+	glPopMatrix();
+}
+
+void lowerLimbs2() {
+	glPushMatrix();
+	joint();
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(0.0, -0.2, 0.0);
+	limb();
+	glPopMatrix();
+}
+
+void lowerLimbs3() {
+	glPushMatrix();
+	joint();
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(0.0, -0.2, 0.0);
+	foot();
+	glPopMatrix();
+}
+
+void leftDLimb() {
+	glPushMatrix();
+		glTranslatef(0.0, -2.9, 0.0);
+		glRotatef(accmX[10], 1, 0, 0);
+		glRotatef(accmY[10], 0, 1, 0);
+		glRotatef(accmZ[10], 0, 0, 1);
+		if (movePart == 71) {
+			accmX[10] = mx;
+			accmY[10] = my;
+			accmZ[10] = mz;
+		}
+
+		glPushAttrib(GL_CURRENT_BIT);
+		if (movePart == 81) {
+			glColor3f(1.0, 0.0, 0.0);
+		}
+		glPushMatrix();
+			glTranslatef(0.0, -2.9, 0.0);
+			glRotatef(accmX[12], 1, 0, 0);
+			glRotatef(accmY[12], 0, 1, 0);
+			glRotatef(accmZ[12], 0, 0, 1);
+			if (movePart == 81) {
+				accmX[12] = mx;
+				accmY[12] = my;
+				accmZ[12] = mz;
+			}
+			lowerLimbs3();
+		glPopMatrix();
+		glPopAttrib();
+
+		glPushAttrib(GL_CURRENT_BIT);
+		if (movePart == 71) {
+			glColor3f(1.0, 0.0, 0.0);
+		}
+
+
+		lowerLimbs2();
+	glPopMatrix();
+	glPopAttrib();
+
+	glPushMatrix();
+		lowerLimbs();
+	glPopMatrix();
+}
+
+void rightDLimb() {
+	glPushMatrix();
+		glTranslatef(0.0, -2.9, 0.0);
+		glRotatef(accmX[11], 1, 0, 0);
+		glRotatef(accmY[11], 0, 1, 0);
+		glRotatef(accmZ[11], 0, 0, 1);
+		if (movePart == 72) {
+			accmX[11] = mx;
+			accmY[11] = my;
+			accmZ[11] = mz;
+		}
+
+		glPushAttrib(GL_CURRENT_BIT);
+		if (movePart == 82) {
+			glColor3f(1.0, 0.0, 0.0);
+		}
+		glPushMatrix();
+			glTranslatef(0.0, -2.9, 0.0);
+			glRotatef(accmX[13], 1, 0, 0);
+			glRotatef(accmY[13], 0, 1, 0);
+			glRotatef(accmZ[13], 0, 0, 1);
+			if (movePart == 82) {
+				accmX[13] = mx;
+				accmY[13] = my;
+				accmZ[13] = mz;
+			}
+			lowerLimbs3();
+		glPopMatrix();
+		glPopAttrib();
+
+		glPushAttrib(GL_CURRENT_BIT);
+		if (movePart == 72) {
+			glColor3f(1.0, 0.0, 0.0);
+		}
+
+
+		lowerLimbs2();
+	glPopMatrix();
+	glPopAttrib();
+
+	glPushMatrix();
+		lowerLimbs();
+	glPopMatrix();
+}
+
+void robot() {
+
+	HBITMAP hBMP = (HBITMAP)LoadImage(GetModuleHandle(NULL),
+		"rust.bmp", IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION |
+		LR_LOADFROMFILE);
+
+	GetObject(hBMP, sizeof(BMP), &BMP);
+	glEnable(GL_TEXTURE_2D);
+
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, BMP.bmWidth, BMP.bmHeight, 0, GL_BGR_EXT, GL_UNSIGNED_BYTE, BMP.bmBits);
+
+
+	glPushAttrib(GL_CURRENT_BIT);
+	if (movePart == 2) {
+		glColor3f(1.0, 0.0, 0.0);
+	}
+	glPushMatrix();
+		glRotatef(accmX[1], 1, 0, 0);
+		glRotatef(accmY[1], 0, 1, 0);
+		glRotatef(accmZ[1], 0, 0, 1);
+		if (movePart == 2) {
+			accmX[1] = mx;
+			accmY[1] = my;
+			accmZ[1] = mz;
+		}
+
+		// Head & Neck
+		glPushMatrix();
+			glTranslatef(0.0, 4.8, 0.0);
+			headNeck();
+		glPopMatrix();
+
+		// Upper Body
+		upperBody();
+
+		// Upper Limbs
+		glPushAttrib(GL_CURRENT_BIT);
+		if (movePart == 31) {
+			glColor3f(1.0, 0.0, 0.0);
+		}
+		glPushMatrix();
+			glTranslatef(2.5, 3.0, 0.0);
+			if (animation == 1) {
+				walk();
+			}
+			glRotatef(accmX[2], 1, 0, 0);
+			glRotatef(accmY[2], 0, 1, 0);
+			glRotatef(accmZ[2], 0, 0, 1);
+			if (movePart == 31) {
+				accmX[2] = mx;
+				accmY[2] = my;
+				accmZ[2] = mz;
+			}
+			leftULimb();
+		glPopMatrix();
+		glPopAttrib();
+
+		glPushAttrib(GL_CURRENT_BIT);
+		if (movePart == 32) {
+			glColor3f(1.0, 0.0, 0.0);
+		}
+		glPushMatrix();
+			glTranslatef(-2.5, 3.0, 0.0);
+			if (animation == 1) {
+				walk();
+			}
+			else if (animation == 2) {
+				drawSword();
+			}
+			glRotatef(accmX[3], 1, 0, 0);
+			glRotatef(accmY[3], 0, 1, 0);
+			glRotatef(accmZ[3], 0, 0, 1);
+			if (movePart == 32) {
+				accmX[3] = mx;
+				accmY[3] = my;
+				accmZ[3] = mz;
+			}
+			rightULimb();
+		glPopMatrix();
+		glPopAttrib();
+
+	glPopMatrix();
+	glPopAttrib();
+
+	// Lower Body
+	lowerBody();
+
+	// Lower Limbs
+	glPushAttrib(GL_CURRENT_BIT);
+	if (movePart == 61) {
+		glColor3f(1.0, 0.0, 0.0);
+	}
+	glPushMatrix();
+		glTranslatef(1.5, -3.3, 0.0);
+		if (animation == 1) {
+			walk();
+		}
+		glRotatef(accmX[8], 1, 0, 0);
+		glRotatef(accmY[8], 0, 1, 0);
+		glRotatef(accmZ[8], 0, 0, 1);
+		if (movePart == 61) {
+			accmX[8] = mx;
+			accmY[8] = my;
+			accmZ[8] = mz;
+		}
+		leftDLimb();
+	glPopMatrix();
+	glPopAttrib();
+
+	glPushAttrib(GL_CURRENT_BIT);
+	if (movePart == 62) {
+		glColor3f(1.0, 0.0, 0.0);
+	}
+	glPushMatrix();
+		glTranslatef(-1.5, -3.3, 0.0);
+		if (animation == 1) {
+			walk();
+		}
+		glRotatef(accmX[9], 1, 0, 0);
+		glRotatef(accmY[9], 0, 1, 0);
+		glRotatef(accmZ[9], 0, 0, 1);
+		if (movePart == 62) {
+			accmX[9] = mx;
+			accmY[9] = my;
+			accmZ[9] = mz;
+		}
+		rightDLimb();
+	glPopMatrix();
+	glPopAttrib();
+
+
+	glDisable(GL_TEXTURE_2D);
+	DeleteObject(hBMP);
+	glDeleteTextures(1, &texture);
+
+}
+
+void sword() {
+	GLfloat swordVertices[7][3] = {
+		0.0, 0.0, 0.1,
+		-0.5, 0.0, 0.0,
+		0.0, 0.0, -0.1,
+		0.5, 0.0, 0.0,
+		0.0, -10.0, 0.0,
+		-0.5, -9.0, 0.0,
+		0.5, -9.0, 0.0
+	};
+
+	GLfloat handleVertices[8][3] = {
+		-2.0, 0.0, 0.2,
+		-2.0, 0.0, -0.2,
+		-2.0, -0.4, -0.2,
+		-2.0, -0.4, 0.2,
+		2.0, 0.0, 0.2,
+		2.0, -0.4, 0.2,
+		2.0, -0.4, -0.2,
+		2.0, 0.0, -0.2,
+	};
+
+	GLUquadricObj* cylinder = NULL;
+	cylinder = gluNewQuadric();
+
+	GLUquadricObj* sphere = NULL;
+	sphere = gluNewQuadric();
+
+	// Blade
+	glBegin(GL_QUADS);
+	// Top
+	CalculateVectorNormal(swordVertices[2], swordVertices[3], swordVertices[0], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(swordVertices[0]);	//0
+	glVertex3fv(swordVertices[3]);	//3
+	glVertex3fv(swordVertices[2]);	//2
+	glVertex3fv(swordVertices[1]);	//1
+
+	// Front 1
+	CalculateVectorNormal(swordVertices[4], swordVertices[0], swordVertices[3], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(swordVertices[3]);	//3
+	glVertex3fv(swordVertices[0]);	//0
+	glVertex3fv(swordVertices[4]);	//4
+	glVertex3fv(swordVertices[6]);	//6
+
+	// Front 2
+	CalculateVectorNormal(swordVertices[5], swordVertices[1], swordVertices[0], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(swordVertices[0]);	//0
+	glVertex3fv(swordVertices[1]);	//1
+	glVertex3fv(swordVertices[5]);	//5
+	glVertex3fv(swordVertices[4]);	//4
+
+	// Back 1
+	CalculateVectorNormal(swordVertices[4], swordVertices[2], swordVertices[1], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(swordVertices[1]);	//1
+	glVertex3fv(swordVertices[2]);	//2
+	glVertex3fv(swordVertices[4]);	//4
+	glVertex3fv(swordVertices[5]);	//5
+
+	// Back 2
+	CalculateVectorNormal(swordVertices[6], swordVertices[3], swordVertices[2], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(swordVertices[2]);	//2
+	glVertex3fv(swordVertices[3]);	//3
+	glVertex3fv(swordVertices[6]);	//6
+	glVertex3fv(swordVertices[4]);	//4
+
+	glEnd();
+
+	// Handle
+	glBegin(GL_QUADS);
+	// Left
+	CalculateVectorNormal(handleVertices[2], handleVertices[1], handleVertices[0], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(handleVertices[0]);	//0
+	glVertex3fv(handleVertices[1]);	//1
+	glVertex3fv(handleVertices[2]);	//2
+	glVertex3fv(handleVertices[3]);	//3
+
+	// Top
+	CalculateVectorNormal(handleVertices[1], handleVertices[7], handleVertices[4], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(handleVertices[4]);	//4
+	glVertex3fv(handleVertices[7]);	//7
+	glVertex3fv(handleVertices[1]);	//1
+	glVertex3fv(handleVertices[0]);	//0
+
+	// Front
+	CalculateVectorNormal(handleVertices[0], handleVertices[4], handleVertices[5], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(handleVertices[5]);	//5
+	glVertex3fv(handleVertices[4]);	//4
+	glVertex3fv(handleVertices[0]);	//0
+	glVertex3fv(handleVertices[3]);	//3
+
+	// Bottom
+	CalculateVectorNormal(handleVertices[3], handleVertices[5], handleVertices[6], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(handleVertices[6]);	//6
+	glVertex3fv(handleVertices[5]);	//5
+	glVertex3fv(handleVertices[3]);	//3
+	glVertex3fv(handleVertices[2]);	//2
+
+	// Back
+	CalculateVectorNormal(handleVertices[7], handleVertices[1], handleVertices[2], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(handleVertices[2]);	//2
+	glVertex3fv(handleVertices[1]);	//1
+	glVertex3fv(handleVertices[7]);	//7
+	glVertex3fv(handleVertices[6]);	//6
+
+	// Right
+	CalculateVectorNormal(handleVertices[4], handleVertices[7], handleVertices[6], &fNormalX, &fNormalY, &fNormalZ);
+	glNormal3f(fNormalX, fNormalY, fNormalZ);
+	glVertex3fv(handleVertices[6]);	//6
+	glVertex3fv(handleVertices[7]);	//7
+	glVertex3fv(handleVertices[4]);	//4
+	glVertex3fv(handleVertices[5]);	//5
+	glEnd();
+
+	glPushMatrix();
+		glRotatef(-90.0, 1.0, 0.0, 0.0);
+		gluCylinder(cylinder, 0.3, 0.3, 2.0, 10, 10);
+		gluDeleteQuadric(cylinder);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(0.0, 2.2, 0.0);
+		gluSphere(sphere, 0.5, 30, 10);
+		gluDeleteQuadric(sphere);
+	glPopMatrix();
+}
+
+// Map the light source 
+void lightSource() {
+	GLUquadricObj* sphere = NULL;
+	sphere = gluNewQuadric();
+
+	//gluQuadricDrawStyle(sphere, GLU_LINE); //only draw line
+	gluSphere(sphere, 0.5, 10, 10);
+	gluDeleteQuadric(sphere);
+}
+
+void swordRain() {
+	if (draw == 3) {
+		if (swordRainY[0] > -32.0) {
+			swordRainY[0] -= 0.12;
+		}
+		if (swordRainY[1] > -32.0) {
+			swordRainY[1] -= 0.08;
+		}
+		if (swordRainY[2] > -31.0) {
+			swordRainY[2] -= 0.1;
+		}
+		if (swordRainY[3] > -35.0) {
+			swordRainY[3] -= 0.15;
+		}
+		if (swordRainY[4] > -28.0) {
+			swordRainY[4] -= 0.2;
+		}
+		if (swordRainY[5] > -25.0) {
+			swordRainY[5] -= 0.18;
+		}
+		if (swordRainY[6] > -27.0) {
+			swordRainY[6] -= 0.13;
+		}
+		if (swordRainY[7] > -33.0) {
+			swordRainY[7] -= 0.22;
+		}
+		if (swordRainY[8] > -30.0) {
+			swordRainY[8] -= 0.17;
+		}
+		if (swordRainY[9] > -22.0) {
+			swordRainY[9] -= 0.15;
+		}
+		
+		glPushMatrix();		
+			glTranslatef(0.0, swordRainY[0], 0.0);
+			glTranslatef(8.0, 25.0, 2.0);
+			sword();
+		glPopMatrix();
+
+		glPushMatrix();
+			glTranslatef(0.0, swordRainY[1], 0.0);
+			glTranslatef(-7.0, 25.0, 3.0);
+			sword();
+		glPopMatrix();
+
+		glPushMatrix();
+			glTranslatef(0.0, swordRainY[2], 0.0);
+			glTranslatef(9.0, 25.0, 5.0);
+			sword();
+		glPopMatrix();
+
+		glPushMatrix();
+			glTranslatef(0.0, swordRainY[3], 0.0);
+			glTranslatef(-2.0, 25.0, 7.0);
+			sword();
+		glPopMatrix();
+
+		glPushMatrix();
+			glTranslatef(0.0, swordRainY[4], 0.0);
+			glTranslatef(-10.0, 25.0, 10.0);
+			sword();
+		glPopMatrix();
+
+		glPushMatrix();
+			glTranslatef(0.0, swordRainY[5], 0.0);
+			glTranslatef(-4.0, 25.0, -5.0);
+			sword();
+		glPopMatrix();
+
+		glPushMatrix();
+			glTranslatef(0.0, swordRainY[6], 0.0);
+			glTranslatef(3.0, 25.0, -3.0);
+			sword();
+		glPopMatrix();
+
+		glPushMatrix();
+			glTranslatef(0.0, swordRainY[7], 0.0);
+			glTranslatef(1.0, 25.0, 8.0);
+			sword();
+		glPopMatrix();
+
+		glPushMatrix();
+			glTranslatef(0.0, swordRainY[8], 0.0);
+			glTranslatef(5.0, 25.0, 4.0);
+			sword();
+		glPopMatrix();
+
+		glPushMatrix();
+			glTranslatef(0.0, swordRainY[9], 0.0);
+			glTranslatef(5.0, 25.0, 12.0);
+			sword();
+		glPopMatrix();
+	}
+}
+
+void robotPose() {
+	// The Thinker
+	if (pose == 1) {
+		weapon = 0;
+		accmX[14] = 10.0;
+		accmX[1] = 30.0;
+		accmX[0] = 10.0;
+		accmX[8] = -90.0;
+		accmX[9] = -70.0;
+		accmX[10] = 100.0;
+		accmX[11] = 90.0;
+		accmZ[9] = -10.0;
+		accmZ[11] = 20.0;
+		accmY[11] = 10.0;
+		accmX[12] = 20.0;
+		accmX[13] = 30.0;
+		accmX[2] = -50.0;
+		accmY[2] = -10.0;
+		accmZ[2] = -10.0;
+		accmX[4] = -15.0;
+		accmY[6] = -70.0;
+		accmX[6] = 20.0;
+		accmX[3] = -50.0;
+		accmY[3] = 10.0;
+		accmZ[3] = 20.0;
+		accmZ[5] = 30.0;
+		accmX[5] = -110.0;
+		accmY[7] = -50.0;
+		accmX[7] = -60.0;
+		accmZ[7] = 20.0;
+	}
+}
+
+//--------------------------------------------------------------------
+LRESULT WINAPI WindowProcedure(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	switch (msg)
+	{
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		break;
+
+	case WM_KEYDOWN:
+		if (wParam == VK_ESCAPE) PostQuitMessage(0);
+		if (wParam == 'W') { rx = -1.0; ry = 0.0; rz = 0.0; glRotatef(rotateSpeed, -1.0, 0.0, 0.0); }
+		if (wParam == 'S') { rx = 1.0; ry = 0.0; rz = 0.0;	glRotatef(rotateSpeed, 1.0, 0.0, 0.0); }
+		if (wParam == 'A') { rx = 0.0; ry = -1.0; rz = 0.0; glRotatef(rotateSpeed, 0.0, -1.0, 0.0); }
+		if (wParam == 'D') { rx = 0.0; ry = 1.0; rz = 0.0;	glRotatef(rotateSpeed, 0.0, 1.0, 0.0); }
+		if (wParam == 'Q') { rx = 0.0; ry = 0.0; rz = 1.0;	glRotatef(rotateSpeed, 0.0, 0.0, 1.0); }
+		if (wParam == 'E') { rx = 0.0; ry = 0.0; rz = -1.0; glRotatef(rotateSpeed, 0.0, 0.0, -1.0); }
+		if (wParam == VK_UP)	{ ty += 1.0; }
+		if (wParam == VK_DOWN)	{ ty -= 1.0; }
+		if (wParam == VK_LEFT)	{ tx -= 1.0; }
+		if (wParam == VK_RIGHT) { tx += 1.0; }
+		if (wParam == VK_SHIFT) { tz -= 1.0; }
+		if (wParam == VK_CONTROL) { tz += 1.0; }
+		if (wParam == VK_SPACE) {
+			rx = 0.0;
+			ry = 0.0;
+			rz = 0.0;
+			lx = 8.0;
+			ly = 8.0;
+			lz = 8.0;
+			lightOn = false;
+			lightPos[0] = lx;
+			lightPos[1] = ly;
+			lightPos[2] = lz;
+			movePart = 0;
+			mx = 0.0;
+			my = 0.0;
+			mz = 0.0;
+			tx = 0.0;
+			ty = 0.0;
+			tz = 0.0;
+			animation = 0;
+			draw = 0;
+			swordRX = 0.0;
+			swordRY = 0.0;
+			swordRZ = 0.0;
+			swordTX = 0.0;
+			swordTY = 0.0;
+			swordTZ = 0.0;
+			pose = 0;
+
+			for (int i = 0; i < 10; i++) {
+				swordRainY[i] = 0.0;
+			}
+
+			for (int i = 0; i < 15; i++) {
+				accmX[i] = 0.0;
+				accmY[i] = 0.0;
+				accmZ[i] = 0.0;
+			}
+			
+			glLoadIdentity();
+			if (OrthoPers == 1) {
+				glTranslatef(0.0, 0.0, -15.0);
+			}
+		}
+		if (wParam == 0x30) {
+			movePart = 0;
+			mx = 0.0;
+			my = 0.0;
+			mz = 0.0;
+		}
+		if (wParam == 0x31) {
+			movePart = 1;
+			mx = accmX[0];
+			my = accmY[0];
+			mz = accmZ[0];
+		}
+		if (wParam == 0x32) {
+			movePart = 2;
+			mx = accmX[1];
+			my = accmY[1];
+			mz = accmZ[1];
+		}
+		if (wParam == 0x33) {
+			mx = 0.0;
+			my = 0.0;
+			mz = 0.0;
+			if (movePart == 31) {
+				movePart = 32;
+				mx = accmX[3];
+				my = accmY[3];
+				mz = accmZ[3];
+			}
+			else {
+				movePart = 31;
+				mx = accmX[2];
+				my = accmY[2];
+				mz = accmZ[2];
+			}
+		}
+		if (wParam == 0x34) {
+			mx = 0.0;
+			my = 0.0;
+			mz = 0.0;
+			if (movePart == 41) {
+				movePart = 42;
+				mx = accmX[5];
+				my = accmY[5];
+				mz = accmZ[5];
+			}
+			else {
+				movePart = 41;
+				mx = accmX[4];
+				my = accmY[4];
+				mz = accmZ[4];
+			}
+		}
+		if (wParam == 0x35) {
+			mx = 0.0;
+			my = 0.0;
+			mz = 0.0;
+			if (movePart == 51) {
+				movePart = 52;
+				mx = accmX[7];
+				my = accmY[7];
+				mz = accmZ[7];
+			}
+			else {
+				movePart = 51;
+				mx = accmX[6];
+				my = accmY[6];
+				mz = accmZ[6];
+			}
+		}
+		if (wParam == 0x36) {
+			mx = 0.0;
+			my = 0.0;
+			mz = 0.0;
+			if (movePart == 61) {
+				movePart = 62;
+				mx = accmX[9];
+				my = accmY[9];
+				mz = accmZ[9];
+			}
+			else {
+				movePart = 61;
+				mx = accmX[8];
+				my = accmY[8];
+				mz = accmZ[8];
+			}
+		}
+		if (wParam == 0x37) {
+			mx = 0.0;
+			my = 0.0;
+			mz = 0.0;
+			if (movePart == 71) {
+				movePart = 72;
+				mx = accmX[11];
+				my = accmY[11];
+				mz = accmZ[11];
+			}
+			else {
+				movePart = 71;
+				mx = accmX[10];
+				my = accmY[10];
+				mz = accmZ[10];
+			}
+		}
+		if (wParam == 0x38) {
+			mx = 0.0;
+			my = 0.0;
+			mz = 0.0;
+			if (movePart == 81) {
+				movePart = 82;
+				mx = accmX[13];
+				my = accmY[13];
+				mz = accmZ[13];
+			}
+			else {
+				movePart = 81;
+				mx = accmX[12];
+				my = accmY[12];
+				mz = accmZ[12];
+			}
+		}
+		if (wParam == 0x39) {
+			movePart = 9;
+			mx = 0.0;
+			my = 0.0;
+			mz = 0.0;
+			mx = accmX[14];
+			my = accmY[14];
+			mz = accmZ[14];
+		}
+		if (wParam == 'I') {
+			ly += lightSpeed;
+			lightPos[1] = ly;
+		}
+		if (wParam == 'K') {
+			ly -= lightSpeed;
+			lightPos[1] = ly;
+		}
+		if (wParam == 'J') {
+			lx -= lightSpeed;
+			lightPos[0] = lx;
+		}
+		if (wParam == 'L') {
+			lx += lightSpeed;
+			lightPos[0] = lx;
+		}
+		if (wParam == 'O') {
+			lz -= lightSpeed;
+			lightPos[2] = lz;
+		}
+		if (wParam == 'U') {
+			lz += lightSpeed;
+			lightPos[2] = lz;
+		}
+		if (wParam == 'P') {
+			if (lightOn)
+				lightOn = false;
+			else
+				lightOn = true;
+		}
+		if (wParam == 'Z') {
+			lx = 8.0;
+			ly = 8.0;
+			lz = 8.0;
+			lightOn = true;
+			lightPos[0] = lx;
+			lightPos[1] = ly;
+			lightPos[2] = lz;
+		}
+		if (wParam == 'T') { mx -= moveSpeed;	my += 0.0;			mz += 0.0;			moveDirection = 0; }
+		if (wParam == 'G') { mx += moveSpeed;	my += 0.0;			mz += 0.0;			moveDirection = 0; }
+		if (wParam == 'F') { mx += 0.0;			my += 0.0;			mz -= moveSpeed;	moveDirection = 2; }
+		if (wParam == 'H') { mx += 0.0;			my += 0.0;			mz += moveSpeed;	moveDirection = 2; }
+		if (wParam == 'Y') { mx += 0.0;			my += moveSpeed;	mz += 0.0;			moveDirection = 1; }
+		if (wParam == 'R') { mx += 0.0;			my -= moveSpeed;	mz += 0.0;			moveDirection = 1; }
+		if (wParam == 'M') { 
+			animation = 1; 
+			for (int i = 0; i < 15; i++) {
+				accmX[i] = 0.0;
+				accmY[i] = 0.0;
+				accmZ[i] = 0.0;
+			}
+		}
+		if (wParam == 'N') { 
+			animation = 2;
+			weapon = 1;
+			for (int i = 0; i < 15; i++) {
+				accmX[i] = 0.0;
+				accmY[i] = 0.0;
+				accmZ[i] = 0.0;
+			}
+		}
+		if (wParam == 'X') {
+			if (OrthoPers == 1) {
+				glMatrixMode(GL_PROJECTION);
+				glLoadIdentity();
+				glOrtho(-15.0, 15.0, -15.0, 15.0, -15.0, 15.0);
+				OrthoPers = 0;
+			}
+			else {
+				glMatrixMode(GL_PROJECTION);
+				glLoadIdentity();
+				glFrustum(-2.0, 2.0, -2.0, 2.0, 1.0, 20.0);
+				OrthoPers = 1;
+
+				glMatrixMode(GL_MODELVIEW);
+				glLoadIdentity();
+				glTranslatef(0.0, 0.0, -15.0);
+			}
+		}
+		if (wParam == 'C') {
+			if (weapon == 1)
+				weapon = 0;
+			else
+				weapon = 1;
+		}
+		if (wParam == 'B') {
+			if (pose == 1)
+				pose = 0;
+			else
+				pose = 1;
+		}
+		if (wParam == VK_OEM_MINUS) {
+				glScalef(0.8, 0.8, 0.8);
+		}
+		if (wParam == VK_OEM_PLUS) {
+				glScalef(1.2, 1.2, 1.2);
+		}
+
+
+
+		break;
+
+	default:
+		break;
+	}
+
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+//--------------------------------------------------------------------
+
+bool initPixelFormat(HDC hdc)
+{
+	PIXELFORMATDESCRIPTOR pfd;
+	ZeroMemory(&pfd, sizeof(PIXELFORMATDESCRIPTOR));
+
+	pfd.cAlphaBits = 8;
+	pfd.cColorBits = 32;
+	pfd.cDepthBits = 24;
+	pfd.cStencilBits = 0;
+
+	pfd.dwFlags = PFD_DOUBLEBUFFER | PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW;
+
+	pfd.iLayerType = PFD_MAIN_PLANE;
+	pfd.iPixelType = PFD_TYPE_RGBA;
+	pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+	pfd.nVersion = 1;
+
+	// choose pixel format returns the number most similar pixel format available
+	int n = ChoosePixelFormat(hdc, &pfd);
+
+	// set pixel format returns whether it sucessfully set the pixel format
+	if (SetPixelFormat(hdc, n, &pfd))
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+//--------------------------------------------------------------------
+
+void display()
+{
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_DEPTH_TEST);
+	if (lightOn)
+		glEnable(GL_LIGHTING);
+	else
+		glDisable(GL_LIGHTING);
+
+
+	glMatrixMode(GL_MODELVIEW);
+
+	// Set up lighting
+	glLightfv(GL_LIGHT0, GL_DIFFUSE, dif);
+	glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
+
+	glLightfv(GL_LIGHT1, GL_AMBIENT, amb);
+	glLightfv(GL_LIGHT1, GL_POSITION, lightPos);
+
+	if (lightOn) {
+		glEnable(GL_LIGHT0);
+		glEnable(GL_LIGHT1);
+	}
+	else {
+		glDisable(GL_LIGHT0);
+		glDisable(GL_LIGHT1);
+	}
+
+	glShadeModel(GL_SMOOTH);
+
+	if (lightOn) {
+		// White color for light source
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, white);
+		glMaterialfv(GL_BACK, GL_AMBIENT, white);
+
+		// Indicate the light source
+		glPushMatrix();
+		glTranslatef(lx, ly, lz);
+		lightSource();
+		glPopMatrix();
+	}
+
+	// Whole model continuous rotation
+	//if (rx != 0.0 || ry != 0.0 || rz != 0.0)
+	//	glRotatef(0.05, rx, ry, rz);
+
+
+	// ************************** Translation ******************************
+	glPushMatrix();
+	glTranslatef(tx, ty, tz);
+
+
+	//------------------------------ Robot ----------------------------------------
+	glPushMatrix();
+	robotPose();
+
+	glRotatef(accmX[14], 1, 0, 0);
+	glRotatef(accmY[14], 0, 1, 0);
+	glRotatef(accmZ[14], 0, 0, 1);
+	if (movePart == 9) {
+		accmX[14] = mx;
+		accmY[14] = my;
+		accmZ[14] = mz;
+	}
+
+	// Green color for robot
+	glMaterialfv(GL_FRONT, GL_DIFFUSE, white);
+	glMaterialfv(GL_BACK, GL_AMBIENT, white);
+
+	// vv Draw outline vv
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	glColor3f(1.0, 1.0, 1.0);
+	robot();
+
+	glEnable(GL_POLYGON_OFFSET_FILL);
+	glPolygonOffset(1.0, 0.0);
+	glColor3f(0.0, 0.0, 1.0);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	// ^^ Draw outline ^^
+
+	glPushAttrib(GL_CURRENT_BIT);
+	if (movePart == 9) {
+		glColor3f(1.0, 0.0, 0.0);
+	}
+	glPushMatrix();
+		robot();
+	glPopMatrix();
+
+	glPopMatrix();
+	glPopAttrib();
+	
+	//------------------------------ Sword --------------------------------------
+	if (weapon == 1) {
+		glPushMatrix();
+
+		
+
+		// Yellow color for sword
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, yellow);
+		glMaterialfv(GL_BACK, GL_AMBIENT, yellow);
+
+		// vv Draw outline vv
+		glDisable(GL_POLYGON_OFFSET_FILL);
+		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		glColor3f(1.0, 1.0, 1.0);
+		glPushMatrix();
+			glTranslatef(-2.0, 5.0, -1.5);
+			glRotatef(30.0, 0.0, 0.0, 1.0);
+
+			glTranslatef(swordTX, swordTY, swordTZ);
+			glRotatef(swordRZ, 0, 0, 1);
+			glRotatef(swordRX, 1, 0, 0);
+			glRotatef(swordRY, 0, 1, 0);
+			swordRotation();
+
+			sword();
+		glPopMatrix();
+
+		glEnable(GL_POLYGON_OFFSET_FILL);
+		glPolygonOffset(1.0, 0.0);
+		glColor3f(1.0, 0.0, 1.0);
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		// ^^ Draw outline ^^
+
+		glPushAttrib(GL_CURRENT_BIT);
+		glPushMatrix();
+			glTranslatef(-2.0, 5.0, -1.5);
+			glRotatef(30.0, 0.0, 0.0, 1.0);
+
+			glTranslatef(swordTX, swordTY, swordTZ);
+			glRotatef(swordRZ, 0, 0, 1);
+			glRotatef(swordRX, 1, 0, 0);
+			glRotatef(swordRY, 0, 1, 0);
+			//swordRotation();
+
+			sword();
+		glPopMatrix();
+		glPopAttrib();
+
+		glPopMatrix();
+
+		swordRain();
+	}
+
+	glPopMatrix();
+	// ************************** Translation ******************************
+
+
+
+}
+//--------------------------------------------------------------------
+
+int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nCmdShow)
+{
+	WNDCLASSEX wc;
+	ZeroMemory(&wc, sizeof(WNDCLASSEX));
+
+	wc.cbSize = sizeof(WNDCLASSEX);
+	wc.hInstance = GetModuleHandle(NULL);
+	wc.lpfnWndProc = WindowProcedure;
+	wc.lpszClassName = WINDOW_TITLE;
+	wc.style = CS_HREDRAW | CS_VREDRAW;
+
+	if (!RegisterClassEx(&wc)) return false;
+
+	HWND hWnd = CreateWindow(WINDOW_TITLE, WINDOW_TITLE, WS_OVERLAPPEDWINDOW,
+		CW_USEDEFAULT, CW_USEDEFAULT, 700, 700,
+		NULL, NULL, wc.hInstance, NULL);
+
+	// For full screen
+	//SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), 0L);
+
+	//--------------------------------
+	//	Initialize window for OpenGL
+	//--------------------------------
+
+	HDC hdc = GetDC(hWnd);
+
+	//	initialize pixel format for the window
+	initPixelFormat(hdc);
+
+	//	get an openGL context
+	HGLRC hglrc = wglCreateContext(hdc);
+
+	//	make context current
+	if (!wglMakeCurrent(hdc, hglrc)) return false;
+
+	//--------------------------------
+	//	End initialization
+	//--------------------------------
+
+	ShowWindow(hWnd, nCmdShow);
+
+	MSG msg;
+	ZeroMemory(&msg, sizeof(msg));
+
+	// Set the camera before display (while loop), then only move the model in display
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	//glOrtho(-2.0, 2.0, -2.0, 2.0, -2.0, 2.0);
+	//glOrtho(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
+	//gluPerspective(60.0, 1.0, -1.0, 1.0);
+	//glFrustum(-1.0, 1.0, -1.0, 1.0, 1.0, 6.0);
+	glOrtho(-15.0, 15.0, -15.0, 15.0, -15.0, 15.0);
+
+	while (true)
+	{
+		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		{
+			if (msg.message == WM_QUIT) break;
+
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+
+		display();
+
+		SwapBuffers(hdc);
+	}
+
+	UnregisterClass(WINDOW_TITLE, wc.hInstance);
+
+	return true;
+}
+//--------------------------------------------------------------------
